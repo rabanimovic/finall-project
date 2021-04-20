@@ -1,0 +1,112 @@
+version: "3.7"
+services:
+  proxy:
+    image: rabanimovic/nginx-custom
+    ports:
+      - 80:80
+    networks:
+      proxy_net:
+      ext_net:
+    depends_on: 
+      - web
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: any
+    healthcheck:
+      test: curl -f http://localhost/ || exit 0
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
+  web:
+    image: rabanimovic/web-custom
+    working_dir: /var/www/html
+    volumes:
+       - ./file-web:/var/www/html/
+    networks:
+      proxy_net:
+      int_net:
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2    
+        delay: 10s
+      restart_policy:    
+        condition: any
+    healthcheck:
+      test: curl -f http://localhost/ || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
+  mysql:
+    image: mysql:5.7
+    secrets:
+      - root
+      - dbs
+      - user
+      - pwd   
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secret/root
+      MYSQL_DATABASE_FILE : /run/secret/dbs
+      MYSQL_USER_FILE : /run/secret/user
+      MYSQL_PASSWORD_FILE : /run/secret/pwd
+    volumes:
+       - mysql-vol:/var/lib/mysql
+    networks:
+      proxy_net:
+      int_net:
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: any
+    healthcheck:
+      test: "/etc/init.d/mysql status"
+      interval: 1s
+      retries: 120
+  pma:
+    image: rabanimovic/pma-custom
+    depends_on:
+      - mysql
+    environment:
+      PMA_HOSTS : mysql
+    networks:
+      int_net:
+      proxy_net:
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: any
+    healthcheck:
+      test: curl -f http://localhost:8080/ || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mysql-vol:
+
+networks:
+  proxy_net:
+  int_net:
+  ext_net:
+
+secrets:
+ root:
+  file: ./secret/root.txt
+ dbs:
+  file: ./secret/dbs.txt
+ user:
+  file: ./secret/user.txt
+ pwd:
+  file: ./secret/pwd.txt
